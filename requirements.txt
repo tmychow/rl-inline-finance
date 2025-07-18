@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy
+aiosqlite
+httpx
+openai
+ollama
+pandas
+numpy
+python-dotenv
+cors
+python-multipart
+tiingo
