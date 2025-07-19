@@ -5,12 +5,11 @@ import pandas as pd
 import os
 import sys
 
-# Allow running the script directly
+# Add parent directory to path to import backend modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import database helpers
 from backend.database import (
-    get_all_tickers,
     get_all_metrics,
     get_available_periods,
     get_financial_value,
@@ -25,7 +24,7 @@ def format_value(value: float, unit: str) -> str:
     if unit == "USD":
         return f"${value:.2f}"
     if unit == "percentage":
-        return f"{value:.1f}%"
+        return f"{value * 100:.1f}%"
     if unit == "count":
         return f"{int(round(value)):,}"
     if unit == "ratio":
@@ -121,16 +120,21 @@ async def generate_cross_ticker_difference_case(
     for _ in range(10):
         metric = random.choice(metrics)
         t1, t2 = random.sample(tickers, 2)
+        
+        # Find periods where BOTH tickers have data for this metric
+        periods_with_both = []
         periods1 = await get_available_periods(t1, metric["metric_name"])
-        periods2 = await get_available_periods(t2, metric["metric_name"])
-        common = list(set(periods1).intersection(periods2))
-        if not common:
+        
+        for period in periods1:
+            v1 = await get_financial_value(t1, metric["metric_name"], period)
+            v2 = await get_financial_value(t2, metric["metric_name"], period)
+            if v1 and v2:  # Both tickers must have data for this period
+                periods_with_both.append((period, v1, v2))
+        
+        if not periods_with_both:
             continue
-        period = random.choice(common)
-        v1 = await get_financial_value(t1, metric["metric_name"], period)
-        v2 = await get_financial_value(t2, metric["metric_name"], period)
-        if not v1 or not v2:
-            continue
+            
+        period, v1, v2 = random.choice(periods_with_both)
         company1 = await get_company_name(t1)
         company2 = await get_company_name(t2)
         diff = abs(v1["value"] - v2["value"])
@@ -187,16 +191,21 @@ async def generate_multi_metric_calc_case(
     for _ in range(10):
         ticker = random.choice(tickers)
         combo = random.choice(CALC_COMBOS)
+        
+        # Get periods where BOTH metrics have data
+        periods_with_both = []
         periods1 = await get_available_periods(ticker, combo["m1"])
-        periods2 = await get_available_periods(ticker, combo["m2"])
-        common = list(set(periods1).intersection(periods2))
-        if not common:
+        
+        for period in periods1:
+            v1 = await get_financial_value(ticker, combo["m1"], period)
+            v2 = await get_financial_value(ticker, combo["m2"], period)
+            if v1 and v2:  # Both values must exist for this period
+                periods_with_both.append((period, v1, v2))
+        
+        if not periods_with_both:
             continue
-        period = random.choice(common)
-        v1 = await get_financial_value(ticker, combo["m1"], period)
-        v2 = await get_financial_value(ticker, combo["m2"], period)
-        if not v1 or not v2:
-            continue
+            
+        period, v1, v2 = random.choice(periods_with_both)
         if combo["operation"] == "divide":
             if v2["value"] == 0:
                 continue
@@ -229,11 +238,11 @@ STATIC_NO_COMPLETION_PREFIXES = [
 ]
 
 DYNAMIC_NO_COMPLETION_TEMPLATES = [
-    "{company}'s {desc} can be broken down into a few business lines",
+    "{company}'s {desc} can be broken down into a few slices",
     "Analysts often track {company}'s {desc} closely",
-    "During the {period} call, management discussed {company}'s {desc}",
-    "{company}'s team noted that its {desc} trend is improving",
-    "There has been speculation about how {company}'s {desc} might change",
+    "During the {period} call, management discussed {company}'s {desc} and their expectations for it in the future",
+    "{company}'s team mentioned its {desc} trend during the",
+    "There has been speculation about how {company}'s {desc} might",
 ]
 
 async def generate_no_completion_case(
@@ -250,8 +259,19 @@ async def generate_no_completion_case(
         prefix = template.format(company=company, desc=metric["description"], period=period or "the last quarter")
     return {"input": prefix, "ground_truth": "NO_COMPLETION_NEEDED"}
 
+async def get_tickers_with_data() -> List[str]:
+    """Get only tickers that actually have financial data in the database"""
+    async with get_db() as db:
+        async with db.execute("""
+            SELECT DISTINCT ticker 
+            FROM financial_data 
+            ORDER BY ticker
+        """) as cursor:
+            rows = await cursor.fetchall()
+            return [row["ticker"] for row in rows]
+
 async def generate_cases(num_cases: int) -> List[Dict[str, str]]:
-    tickers = await get_all_tickers()
+    tickers = await get_tickers_with_data()  # Only use tickers with actual data
     metrics = await get_all_metrics()
     cases = []
     generators = [
@@ -275,12 +295,26 @@ async def generate_cases(num_cases: int) -> List[Dict[str, str]]:
     return cases
 
 async def main():
+    # First check what tickers we have with data
+    tickers_with_data = await get_tickers_with_data()
+    print(f"Found {len(tickers_with_data)} tickers with financial data: {tickers_with_data}")
+    
+    if not tickers_with_data:
+        print("ERROR: No tickers found with financial data!")
+        print("Please run the data loader first to populate the database.")
+        return
+    
+    print("Generating sample cases for debugging...")
+    sample_cases = await generate_cases(10)
+    print("Generating evaluation cases...")
     eval_cases = await generate_cases(50)
+    print("Generating training cases...")
     train_cases = await generate_cases(200)
 
+    pd.DataFrame(sample_cases).to_csv("data/sample_test_cases.csv", index=False)
     pd.DataFrame(eval_cases).to_csv("data/evaluation_test_cases.csv", index=False)
     pd.DataFrame(train_cases).to_csv("data/training_test_cases.csv", index=False)
-    print("Generated evaluation_test_cases.csv and training_test_cases.csv")
+    print("Generated sample_test_cases.csv, evaluation_test_cases.csv and training_test_cases.csv")
 
 if __name__ == "__main__":
     asyncio.run(main())

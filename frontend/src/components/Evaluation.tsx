@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import styled from '@emotion/styled';
 import { api } from '../api';
-import { TestCase, Model, EvaluationResult } from '../types';
+import { TestCase, Model, EvaluationResult, ToolCall } from '../types';
 
 const Container = styled.div`
   margin-top: 40px;
@@ -66,6 +66,75 @@ const AccuracyBox = styled.div`
   border-radius: 4px;
 `;
 
+const ExpandButton = styled.button`
+  background: none;
+  border: none;
+  color: #0066cc;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 5px;
+  padding: 0;
+  text-decoration: underline;
+  
+  &:hover {
+    color: #0052a3;
+  }
+`;
+
+const TraceContainer = styled.div`
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f8f8f8;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 12px;
+`;
+
+const TraceItem = styled.div`
+  margin-bottom: 8px;
+  padding: 8px;
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+`;
+
+const TraceHeader = styled.div`
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+`;
+
+const TraceArgs = styled.pre`
+  margin: 4px 0;
+  font-family: monospace;
+  font-size: 11px;
+  color: #666;
+  white-space: pre-wrap;
+`;
+
+const TraceResult = styled.pre`
+  margin: 4px 0;
+  font-family: monospace;
+  font-size: 11px;
+  color: #0066cc;
+  white-space: pre-wrap;
+`;
+
+const ReasoningBox = styled.div`
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
+`;
+
+const ReasoningLabel = styled.span`
+  font-weight: bold;
+  color: #333;
+`;
+
 interface EvaluationProps {
   models: Model[];
 }
@@ -75,6 +144,7 @@ export const Evaluation: React.FC<EvaluationProps> = ({ models }) => {
   const [results, setResults] = useState<EvaluationResult[]>([]);
   const [accuracyScores, setAccuracyScores] = useState<Record<string, number>>({});
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [expandedTraces, setExpandedTraces] = useState<Set<string>>(new Set());
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -99,6 +169,38 @@ export const Evaluation: React.FC<EvaluationProps> = ({ models }) => {
     } finally {
       setIsEvaluating(false);
     }
+  };
+
+  const toggleTrace = (traceKey: string) => {
+    setExpandedTraces(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(traceKey)) {
+        newSet.delete(traceKey);
+      } else {
+        newSet.add(traceKey);
+      }
+      return newSet;
+    });
+  };
+
+  const renderTrace = (trace: ToolCall[]) => {
+    return (
+      <TraceContainer>
+        {trace.map((call, idx) => (
+          <TraceItem key={idx}>
+            <TraceHeader>
+              {call.tool}({new Date(call.timestamp).toLocaleTimeString()})
+            </TraceHeader>
+            <TraceArgs>
+              Arguments: {JSON.stringify(call.arguments, null, 2)}
+            </TraceArgs>
+            <TraceResult>
+              Result: {JSON.stringify(call.result, null, 2)}
+            </TraceResult>
+          </TraceItem>
+        ))}
+      </TraceContainer>
+    );
   };
 
   return (
@@ -151,6 +253,9 @@ export const Evaluation: React.FC<EvaluationProps> = ({ models }) => {
                 {models.map(model => {
                   const modelKey = `${model.provider}/${model.name}`;
                   const prediction = result.predictions[modelKey];
+                  const traceKey = `${idx}-${modelKey}`;
+                  const isExpanded = expandedTraces.has(traceKey);
+                  
                   return (
                     <Td key={modelKey}>
                       {prediction ? (
@@ -162,6 +267,20 @@ export const Evaluation: React.FC<EvaluationProps> = ({ models }) => {
                           <div style={{ fontSize: '12px', color: '#666' }}>
                             {(prediction.latency * 1000).toFixed(0)}ms
                           </div>
+                          {prediction.reasoning && (
+                            <ReasoningBox>
+                              <ReasoningLabel>Judge: </ReasoningLabel>
+                              {prediction.reasoning}
+                            </ReasoningBox>
+                          )}
+                          {prediction.trace && prediction.trace.length > 0 && (
+                            <>
+                              <ExpandButton onClick={() => toggleTrace(traceKey)}>
+                                {isExpanded ? 'Hide' : 'Show'} trace ({prediction.trace.length} calls)
+                              </ExpandButton>
+                              {isExpanded && renderTrace(prediction.trace)}
+                            </>
+                          )}
                         </>
                       ) : (
                         'N/A'

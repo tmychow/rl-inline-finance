@@ -95,6 +95,12 @@ async def get_all_tickers() -> List[str]:
             rows = await cursor.fetchall()
             return [row["ticker"] for row in rows]
 
+async def get_tickers_with_names() -> List[Dict[str, str]]:
+    async with get_db() as db:
+        async with db.execute("SELECT ticker, company_name FROM tickers ORDER BY ticker") as cursor:
+            rows = await cursor.fetchall()
+            return [{"ticker": row["ticker"], "company_name": row["company_name"]} for row in rows]
+
 async def get_all_metrics() -> List[Dict[str, str]]:
     async with get_db() as db:
         async with db.execute("SELECT metric_name, description, unit FROM metrics ORDER BY metric_name") as cursor:

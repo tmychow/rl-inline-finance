@@ -58,7 +58,7 @@ const ContentGrid = styled.div`
 `;
 
 const models: Model[] = [
-  { provider: 'openai', name: 'gpt-4o-mini', displayName: 'GPT-4o Mini' },
+  { provider: 'openai', name: 'gpt-4.1', displayName: 'GPT-4.1' },
   { provider: 'ollama', name: 'gemma3:4b', displayName: 'Gemma 3 4B (Local)' },
 ];
 
