@@ -102,10 +102,13 @@ Generate synthetic test cases:
 ```bash
 python scripts/generate_synthetic_data.py
 ```
-
 This creates:
 - `data/evaluation_test_cases.csv`: 50 test cases for evaluation
 - `data/training_test_cases.csv`: 200 test cases for training
+
+The generator now covers cross-ticker comparisons, multi-metric ratios, and a
+wider variety of no-completion prefixes that mention random tickers and metrics
+without requiring a numeric answer. This results in more realistic benchmarking.
 
 ## Models Supported
 

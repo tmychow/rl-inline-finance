@@ -23,8 +23,10 @@ export interface EvaluationResult {
   predictions: Record<string, {
     completion: string | null;
     is_correct: boolean;
+    reasoning: string;
     latency: number;
     tool_calls: number;
+    trace?: ToolCall[];
   }>;
 }
 

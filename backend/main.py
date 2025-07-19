@@ -6,6 +6,7 @@ import csv
 import io
 import asyncio
 from datetime import datetime
+from openai import AsyncOpenAI
 
 import sys
 import os
@@ -27,7 +28,7 @@ except ImportError:
 class CompletionRequest(BaseModel):
     text: str
     model_provider: str = "openai"
-    model_name: str = "gpt-4o-mini"
+    model_name: str = "gpt-4.1"
 
 class CompletionResponse(BaseModel):
     completion: Optional[str]
@@ -107,13 +108,15 @@ async def batch_evaluation(request: BatchEvaluationRequest):
             
             model_key = f"{model['provider']}/{model['name']}"
             
-            is_correct = await _evaluate_correctness(completion, ground_truth)
+            is_correct, reasoning = await _evaluate_correctness(completion, ground_truth)
             
             case_results["predictions"][model_key] = {
                 "completion": completion,
                 "is_correct": is_correct,
+                "reasoning": reasoning,
                 "latency": latency,
-                "tool_calls": len(tool_calls)
+                "tool_calls": len(tool_calls),
+                "trace": tool_calls  # Store the full trace
             }
             
             if is_correct:
@@ -131,29 +134,81 @@ async def batch_evaluation(request: BatchEvaluationRequest):
         accuracy_scores=accuracy_scores
     )
 
-async def _evaluate_correctness(prediction: Optional[str], ground_truth: str) -> bool:
-    if not prediction:
-        return False
+async def _evaluate_correctness(prediction: Optional[str], ground_truth: str) -> tuple[bool, str]:
+    if not prediction and ground_truth != "NO_COMPLETION_NEEDED":
+        return False, "No prediction provided"
     
-    prediction_normalized = prediction.lower().strip()
-    ground_truth_normalized = ground_truth.lower().strip()
-    
-    if prediction_normalized == ground_truth_normalized:
-        return True
-    
+    # Use GPT-4.1 as judge
     try:
-        pred_nums = [float(s) for s in prediction.replace(",", "").split() if s.replace(".", "").replace("-", "").isdigit()]
-        truth_nums = [float(s) for s in ground_truth.replace(",", "").split() if s.replace(".", "").replace("-", "").isdigit()]
+        client = AsyncOpenAI()
         
-        if pred_nums and truth_nums:
-            for pred in pred_nums:
-                for truth in truth_nums:
-                    if abs(pred - truth) / max(abs(truth), 1) < 0.05:
-                        return True
-    except:
-        pass
-    
-    return False
+        if ground_truth == "NO_COMPLETION_NEEDED":
+            prompt = f"""You are evaluating whether a model correctly identified that no completion was needed.
+
+The model's response: {prediction if prediction else "[empty/no response]"}
+
+The model should have either:
+1. Returned nothing/empty string
+2. Indicated that no completion is needed
+3. Refused to complete in some way
+
+Did the model correctly avoid providing a completion?
+
+Please respond with your judgment in the following XML format:
+<judgment>
+<verdict>YES/NO</verdict>
+<reasoning>Your explanation for why you made this decision</reasoning>
+</judgment>"""
+        else:
+            prompt = f"""You are evaluating whether a model's prediction matches the ground truth for a financial data AUTOCOMPLETE task.
+
+Ground Truth (the completion only): {ground_truth}
+Model Prediction: {prediction}
+
+CRITICAL: This is an autocomplete task, so the model should return ONLY the completion text, NOT the full sentence.
+For example, if the input is "Apple's revenue in 2023 was", the model should return "$383.3 billion", NOT "Apple's revenue in 2023 was $383.3 billion".
+
+Please determine if the model's prediction is correct. Consider:
+- The model MUST return only the completion suffix, not repeat the input
+- Numeric values should be approximately equal (within reasonable rounding)
+- Different formats are acceptable (e.g., "$1.2B" vs "$1.2 billion" vs "1200 million")
+- Formatting differences are acceptable
+- We care about the meaning, not the exact symbols or how natural the language is
+- 0 does not mean no completion needed
+
+Please respond with your judgment in the following XML format:
+<judgment>
+<verdict>YES/NO</verdict>
+<reasoning>Your explanation for why you made this decision</reasoning>
+</judgment>"""
+
+        response = await client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=200
+        )
+        
+        response_text = response.choices[0].message.content.strip()
+        
+        # Parse XML response
+        import re
+        verdict_match = re.search(r'<verdict>(YES|NO)</verdict>', response_text, re.IGNORECASE)
+        reasoning_match = re.search(r'<reasoning>(.*?)</reasoning>', response_text, re.DOTALL)
+        
+        if verdict_match:
+            verdict = verdict_match.group(1).upper() == "YES"
+            reasoning = reasoning_match.group(1).strip() if reasoning_match else "No reasoning provided"
+            return verdict, reasoning
+        else:
+            # Fallback if XML parsing fails
+            return "YES" in response_text.upper(), f"Failed to parse XML response: {response_text}"
+        
+    except Exception as e:
+        print(f"Error using GPT-4.1 judge: {e}")
+        # Fallback to simple exact match
+        is_correct = prediction.lower().strip() == ground_truth.lower().strip()
+        return is_correct, f"Fallback evaluation due to error: {str(e)}"
 
 @app.post("/api/upload-evaluation-csv")
 async def upload_evaluation_csv(file: UploadFile = File(...)):

@@ -73,6 +73,7 @@ yarn-error.log*
 # Synthetic data
 data/synthetic_*.csv
 data/evaluation_*.csv
+data/training_*.csv
 
 # Reports
 missing_data_report.json
