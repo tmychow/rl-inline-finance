@@ -150,7 +150,6 @@ The model's response: {prediction if prediction else "[empty/no response]"}
 The model should have either:
 1. Returned nothing/empty string
 2. Indicated that no completion is needed
-3. Refused to complete in some way
 
 Did the model correctly avoid providing a completion?
 

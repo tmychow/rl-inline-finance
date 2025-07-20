@@ -153,103 +153,115 @@ class AgentExecutor:
             "return_answer": ["answer"]
         }
         
+        # Find the first tool call in the response
+        earliest_match = None
+        earliest_pos = len(response)
+        matched_tool = None
+        
+        # Find which tool appears first in the response
         for tool_name, params in tool_signatures.items():
-            # Match function calls with flexible syntax
-            # Supports: func(), func(args), func(key=val), func(key="val"), etc.
             pattern = rf"{tool_name}\s*\("
+            match = re.search(pattern, response)
+            if match and match.start() < earliest_pos:
+                earliest_match = match
+                earliest_pos = match.start()
+                matched_tool = (tool_name, params)
+        
+        # If we found a tool call, parse only that one
+        if earliest_match and matched_tool:
+            tool_name, params = matched_tool
+            match = earliest_match
+            start = match.end()
             
-            for match in re.finditer(pattern, response):
-                start = match.end()
+            # Find matching closing parenthesis
+            paren_count = 1
+            end = start
+            while end < len(response) and paren_count > 0:
+                if response[end] == '(':
+                    paren_count += 1
+                elif response[end] == ')':
+                    paren_count -= 1
+                end += 1
+            
+            if paren_count == 0:
+                args_str = response[start:end-1].strip()
                 
-                # Find matching closing parenthesis
-                paren_count = 1
-                end = start
-                while end < len(response) and paren_count > 0:
-                    if response[end] == '(':
-                        paren_count += 1
-                    elif response[end] == ')':
-                        paren_count -= 1
-                    end += 1
+                # Parse arguments
+                parsed_args = {}
                 
-                if paren_count == 0:
-                    args_str = response[start:end-1].strip()
-                    
-                    # Parse arguments
-                    parsed_args = {}
-                    
-                    if not args_str:  # No arguments
-                        if tool_name in ["get_metrics", "get_tickers"]:
-                            tool_calls.append({"tool": tool_name, "args": {}})
+                if not args_str:  # No arguments
+                    if tool_name in ["get_metrics", "get_tickers"]:
+                        tool_calls.append({"tool": tool_name, "args": {}})
+                else:
+                    # Try to parse arguments (both positional and keyword)
+                    if tool_name == "return_answer":
+                        # Special handling for return_answer to capture everything
+                        # Remove quotes if present
+                        answer = args_str
+                        if answer.startswith('answer='):
+                            answer = answer[7:].strip()
+                        # Remove surrounding quotes
+                        for quote in ['"', "'", '"""', "'''"]:
+                            if answer.startswith(quote) and answer.endswith(quote):
+                                answer = answer[len(quote):-len(quote)]
+                                break
+                        parsed_args = {"answer": answer}
                     else:
-                        # Try to parse arguments (both positional and keyword)
-                        if tool_name == "return_answer":
-                            # Special handling for return_answer to capture everything
-                            # Remove quotes if present
-                            answer = args_str
-                            if answer.startswith('answer='):
-                                answer = answer[7:].strip()
-                            # Remove surrounding quotes
-                            for quote in ['"', "'", '"""', "'''"]:
-                                if answer.startswith(quote) and answer.endswith(quote):
-                                    answer = answer[len(quote):-len(quote)]
-                                    break
-                            parsed_args = {"answer": answer}
+                        # Parse other functions
+                        arg_values = []
+                        
+                        # First try to parse keyword arguments
+                        has_keywords = '=' in args_str
+                        
+                        if has_keywords:
+                            # Parse keyword arguments
+                            # Split by comma but not inside quotes
+                            parts = re.split(r',(?=(?:[^"\']*["\'][^"\']*["\'])*[^"\']*$)', args_str)
+                            for part in parts:
+                                if '=' in part:
+                                    key, val = part.split('=', 1)
+                                    key = key.strip()
+                                    val = val.strip()
+                                    # Remove quotes
+                                    for quote in ['"', "'", '"""', "'''"]:
+                                        if val.startswith(quote) and val.endswith(quote):
+                                            val = val[len(quote):-len(quote)]
+                                            break
+                                    if key in params:
+                                        parsed_args[key] = val
                         else:
-                            # Parse other functions
-                            arg_values = []
-                            
-                            # First try to parse keyword arguments
-                            has_keywords = '=' in args_str
-                            
-                            if has_keywords:
-                                # Parse keyword arguments
-                                # Split by comma but not inside quotes
-                                parts = re.split(r',(?=(?:[^"\']*["\'][^"\']*["\'])*[^"\']*$)', args_str)
-                                for part in parts:
-                                    if '=' in part:
-                                        key, val = part.split('=', 1)
-                                        key = key.strip()
-                                        val = val.strip()
-                                        # Remove quotes
-                                        for quote in ['"', "'", '"""', "'''"]:
-                                            if val.startswith(quote) and val.endswith(quote):
-                                                val = val[len(quote):-len(quote)]
-                                                break
-                                        if key in params:
-                                            parsed_args[key] = val
-                            else:
-                                # Parse positional arguments
-                                # Split by comma but not inside quotes
-                                parts = re.split(r',(?=(?:[^"\']*["\'][^"\']*["\'])*[^"\']*$)', args_str)
-                                for i, part in enumerate(parts):
-                                    if i < len(params):
-                                        val = part.strip()
-                                        # Remove quotes
-                                        for quote in ['"', "'", '"""', "'''"]:
-                                            if val.startswith(quote) and val.endswith(quote):
-                                                val = val[len(quote):-len(quote)]
-                                                break
-                                        parsed_args[params[i]] = val
+                            # Parse positional arguments
+                            # Split by comma but not inside quotes
+                            parts = re.split(r',(?=(?:[^"\']*["\'][^"\']*["\'])*[^"\']*$)', args_str)
+                            for i, part in enumerate(parts):
+                                if i < len(params):
+                                    val = part.strip()
+                                    # Remove quotes
+                                    for quote in ['"', "'", '"""', "'''"]:
+                                        if val.startswith(quote) and val.endswith(quote):
+                                            val = val[len(quote):-len(quote)]
+                                            break
+                                    parsed_args[params[i]] = val
                         
-                        # Convert types for specific functions
-                        if tool_name == "calculate" and parsed_args:
-                            if "num1" in parsed_args:
-                                parsed_args["num1"] = float(parsed_args["num1"])
-                            if "num2" in parsed_args:
-                                parsed_args["num2"] = float(parsed_args["num2"])
-                            if "duration" in parsed_args:
-                                # Handle 'None' string, empty string, or actual None
-                                duration_val = parsed_args["duration"]
-                                if duration_val and duration_val.lower() != 'none':
-                                    try:
-                                        parsed_args["duration"] = int(duration_val)
-                                    except ValueError:
-                                        parsed_args["duration"] = None
-                                else:
+                    # Convert types for specific functions
+                    if tool_name == "calculate" and parsed_args:
+                        if "num1" in parsed_args:
+                            parsed_args["num1"] = float(parsed_args["num1"])
+                        if "num2" in parsed_args:
+                            parsed_args["num2"] = float(parsed_args["num2"])
+                        if "duration" in parsed_args:
+                            # Handle 'None' string, empty string, or actual None
+                            duration_val = parsed_args["duration"]
+                            if duration_val and duration_val.lower() != 'none':
+                                try:
+                                    parsed_args["duration"] = int(duration_val)
+                                except ValueError:
                                     parsed_args["duration"] = None
-                        
-                        if parsed_args:
-                            tool_calls.append({"tool": tool_name, "args": parsed_args})
+                            else:
+                                parsed_args["duration"] = None
+                    
+                    if parsed_args:
+                        tool_calls.append({"tool": tool_name, "args": parsed_args})
         
         return tool_calls
     
