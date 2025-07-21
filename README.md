@@ -110,6 +110,20 @@ The generator now covers cross-ticker comparisons, multi-metric ratios, and a
 wider variety of no-completion prefixes that mention random tickers and metrics
 without requiring a numeric answer. This results in more realistic benchmarking.
 
+## RL Fine-tuning
+
+To fine-tune the local Gemma model using GRPO run:
+
+```bash
+python scripts/train_rl.py --dataset data/training_test_cases.csv --eval_dataset data/evaluation_test_cases.csv
+```
+
+The script loads `google/gemma-3-4b-it` with a QLoRA adapter and trains with a
+reward of +1 when the generated completion matches the ground truth and 0 otherwise.
+Training uses the agent's multi-turn tool-calling loop so the model can query
+the environment multiple times before returning an answer. Results are logged to
+Weights & Biases and checkpoints are saved under `checkpoints/`.
+
 ## Models Supported
 
 - **OpenAI**: gpt-4o-mini (remote, fast, accurate)
@@ -117,7 +131,6 @@ without requiring a numeric answer. This results in more realistic benchmarking.
 
 ## Future Work
 
-- Implement RL fine-tuning pipeline for local models
 - Add more financial metrics and calculations
 - Support for real-time market data
 - Enhanced evaluation metrics

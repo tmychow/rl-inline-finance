@@ -136,10 +136,12 @@ class FinancialAgent:
         ]
 
 class AgentExecutor:
-    def __init__(self, model_provider: str = "openai", model_name: str = "gpt-4.1"):
+    def __init__(self, model_provider: str = "openai", model_name: str = "gpt-4.1", hf_model=None, hf_tokenizer=None):
         self.model_provider = model_provider
         self.model_name = model_name
         self.agent = FinancialAgent()
+        self.hf_model = hf_model
+        self.hf_tokenizer = hf_tokenizer
     
     async def _parse_tool_calls_from_response(self, response: str) -> List[Dict[str, Any]]:
         tool_calls = []
@@ -312,7 +314,12 @@ class AgentExecutor:
                 options={"temperature": 0.1}
             )
             return response['message']['content']
-        
+
+        elif self.model_provider == "hf" and self.hf_model is not None and self.hf_tokenizer is not None:
+            inputs = self.hf_tokenizer.apply_chat_template(messages, return_tensors="pt").to(self.hf_model.device)
+            output = self.hf_model.generate(inputs, max_new_tokens=256, temperature=0.1)
+            return self.hf_tokenizer.decode(output[0, inputs.shape[1]:], skip_special_tokens=True)
+
         return ""
     
     def _get_system_prompt(self) -> str:

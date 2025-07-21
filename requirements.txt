@@ -12,3 +12,9 @@ python-dotenv
 cors
 python-multipart
 tiingo
+transformers
+trl
+accelerate
+peft
+datasets
+wandb
