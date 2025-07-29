@@ -59,8 +59,8 @@ const ContentGrid = styled.div`
 
 const models: Model[] = [
   { provider: 'openai', name: 'gpt-4.1', displayName: 'GPT-4.1' },
-  { provider: 'ollama', name: 'gemma3:4b', displayName: 'Gemma 3 4B (Local)' },
-  // { provider: 'ollama', name: 'gemma3n:e4b', displayName: 'Gemma 3N E4B (Local)' },
+  // { provider: 'ollama', name: 'gemma3:4b', displayName: 'Gemma 3 4B (Local)' },
+  { provider: 'ollama', name: 'qwen2.5:3b-instruct', displayName: 'Qwen 2.5 3B Instruct (Local)' },
 ];
 
 type TabType = 'editor' | 'evaluation' | 'fundamentals';

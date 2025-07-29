@@ -315,6 +315,10 @@ class AgentExecutor:
         
         return ""
     
+    def get_system_prompt(self) -> str:
+        """Get the system prompt for the agent."""
+        return self._get_system_prompt()
+    
     def _get_system_prompt(self) -> str:
         return '''You are a financial data assistant that completes partial text with accurate financial data.
 
@@ -360,7 +364,7 @@ You: return_answer(answer="[value with units]")
             # Build initial conversation
             messages = [
                 {"role": "system", "content": self._get_system_prompt()},
-                {"role": "user", "content": f"Complete this text with financial data, if needed. If not, return 'NO_COMPLETION_NEEDED': '{text}'"}
+                {"role": "user", "content": f"Complete this text with financial data, if needed. If not, return_answer(answer='NO_COMPLETION_NEEDED'): '{text}'"}
             ]
             
             # Multi-turn conversation loop
