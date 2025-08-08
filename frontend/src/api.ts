@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { CompletionResponse, TestCase, Model, FinancialData, Metric } from './types';
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = 'http://localhost:8070/api';
 
 export const api = {
   async getCompletion(text: string, model: Model): Promise<CompletionResponse> {

@@ -24,3 +24,12 @@ wandb>=0.16.0
 datasets>=2.14.0
 sentencepiece  # Required for Gemma tokenizer
 protobuf  # Required for model serialization
+
+regex
+openpipe
+openpipe-art[backend]
+async-lru
+
+# Development tools
+pre-commit
+nbstripout  # Clean Jupyter notebooks before committing

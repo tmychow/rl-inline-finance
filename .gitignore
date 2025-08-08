@@ -77,3 +77,11 @@ data/training_*.csv
 
 # Reports
 missing_data_report.json
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Jupyter Notebook metadata
+**/*.ipynb_checkpoints/
+**/*/.ipynb_checkpoints/*

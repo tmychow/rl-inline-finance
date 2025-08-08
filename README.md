@@ -113,7 +113,7 @@ without requiring a numeric answer. This results in more realistic benchmarking.
 ## Models Supported
 
 - **OpenAI**: gpt-4o-mini (remote, fast, accurate)
-- **Ollama**: gemma3:4b (local, can be fine-tuned)
+- **Ollama**: qwen2.5:3b (local, can be fine-tuned)
 
 ## Future Work
 
@@ -122,3 +122,11 @@ without requiring a numeric answer. This results in more realistic benchmarking.
 - Support for real-time market data
 - Enhanced evaluation metrics
 - Model serving infrastructure for fine-tuned models
+
+LLM-as-a-judge for correctness + always calling get_tickers/get_metrics first + efficiency penalty (fewer turns)
+
+Other ideas:
+1. Tool call validity - Penalize malformed tool calls or invalid arguments (e.g., requesting non-existent tickers/metrics)
+2. Information completeness - Reward when the model retrieves all necessary data before attempting calculations (e.g., getting both revenue values before calculating growth)
+3. Calculation accuracy - Separate reward for correct math operations when using the calculate tool, even if final answer is wrong
+4. Redundancy penalty - Discourage repeated identical tool calls within the same conversation
